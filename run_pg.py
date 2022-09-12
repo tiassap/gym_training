@@ -29,7 +29,7 @@ if __name__ == "__main__":
 		config_file = open("config/{}.yml".format(args.config))
 		config = yaml.load(config_file, Loader=yaml.FullLoader)
 
-		if config["env"]["method"] != "Policy Gradient":
+		if config["method"] != "Policy Gradient":
 			raise RuntimeError("Method should be Policy Gradient") 
 
 		print("Config file: {}".format(config_file))
