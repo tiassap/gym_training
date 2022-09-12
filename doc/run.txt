@@ -1,0 +1,19 @@
+
+
+Please specify config file name:
+
+python run.py --config=<file_name>
+
+------------------------------------------------------
+gym_training 0.0 by I. Saputro (isadsaputro@gmail.com)
+Update: 2022-09-07
+------------------------------------------------------
+
+Config list:
+	- case_1:
+		Environment	:	LunarLander-v2
+		Method		:	Policy Gradient
+	
+	- case_2:
+		Environment	:	LunarLander-v2
+		Method		:	DQN
