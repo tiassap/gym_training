@@ -2,12 +2,18 @@
 
 Please specify config file name:
 
-python run_pg.py --config=<file_name>
+	python run_pg.py --config=<file_name>
+or
+	python run_dqn.py --config=<file_name>
 
-------------------------------------------------------
+----------------------------------------------------------------
 gym_training 0.0 by I. Saputro (isadsaputro@gmail.com)
 Update: 2022-09-12
-------------------------------------------------------
+
+Based on assignments on Stanford XCS234 Reinforcement Learning
+course with my individual solution and rewritten codes to be 
+compatible for implementation of different RL algorithms. 
+----------------------------------------------------------------
 
 Config list:
 	- cartpole:

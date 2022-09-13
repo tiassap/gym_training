@@ -242,21 +242,6 @@ class PolicyGradient(object):
 
         return returns
 
-    # def normalize_advantage(self, advantages):
-    #     """
-    #     Normalized advantages
-
-    #     Args:
-    #         advantages (np.array): (shape [batch size])
-    #     Returns:
-    #         normalized_advantages (np.array): (shape [batch size])
-
-    #     """
-    #     normalized_advantages = (
-    #         advantages - advantages.mean()) / advantages.std()
-
-    #     return normalized_advantages
-
     def calculate_advantage(self, returns, observations):
         """
         Calculates the advantage for each of the observations

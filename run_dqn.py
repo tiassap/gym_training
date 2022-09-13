@@ -1,35 +1,20 @@
 import argparse
-import gym
-import torch
-import numpy as np
-import os
-import sys
-
-from src.policy_gradient import PolicyGradient
-from utils.general import join, plot_combined
-
-# import matplotlib
-# matplotlib.use("agg")
-# import matplotlib.pyplot as plt
-
-import random
 import yaml
-
-yaml.add_constructor("!join", join)
+import gym
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", required=False, type=str)
 parser.add_argument("--train", action='store_true')
 parser.add_argument("--record", action='store_true')
 
-if __name__ == "__main__":
+if __name__== "__main__":
 	args = parser.parse_args()
 
 	if args.config is not None:
 		config_file = open("config/{}.yml".format(args.config))
 		config = yaml.load(config_file, Loader=yaml.FullLoader)
 
-		if config["method"] != "Policy Gradient":
+		if config["method"] != "DQN":
 			raise RuntimeError("{} method is {}. Method should be Policy Gradient".format(config_file, config["method"])) 
 
 		print("Config file: {}".format(config_file))
@@ -37,7 +22,7 @@ if __name__ == "__main__":
 		mode = "human" if not (args.train or args.record) else None
 		env = gym.make(config["env"]["env_name"], render_mode = mode)
 
-		model = PolicyGradient(env, config)
+		model = ###
 
 		if args.train:
 			print("Training")
