@@ -1,14 +1,16 @@
-model: "dqn"
+method: "DQN"
 
 env:
-    env_name: "ALE/Pong-v5"
+    env_name: "Breakout-v4"
     overwrite_render: True
     record: True
     high: 255.
 
 output:
-    output_path: &output_path "results/q7_dqn/"
-    model_output: "submission/model.weights"  # output weights to submission folder
+    output_path: &output_path !join ["output/", *env_name]
+    # output_path: &output_path "output/q7_dqn/"
+    # model_output: "submission/model.weights"  # output weights to submission folder
+    model_output: !join [*output_path, "model_timestep-{}_{}.weights"]
     log_path: !join [*output_path, "log.txt"]
     plot_output: !join [*output_path, "scores.png"]
     record_path: !join [*output_path, "monitor/"]
