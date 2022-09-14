@@ -1,5 +1,5 @@
 import numpy as np
-from cv2 import imread, cvtColor, resize, COLOR_RGB2GRAY, INTER_NEAREST, imshow
+from cv2 import cvtColor, resize, COLOR_RGB2GRAY, INTER_NEAREST
 import gym
 from gym import spaces
 from collections import deque
@@ -17,9 +17,12 @@ def preprocessing(state):
 					- Resizing to H:110 x W:84
 					- Cropping to H:84 x W:84
 	"""
+	# Preprocessing
 	state = cvtColor(state, COLOR_RGB2GRAY)
 	state = resize(state, (84, 110), interpolation=INTER_NEAREST)
 	state = state[18:102]
+
+	# Adding axis channel and convert to uint8
 	state = state[:, :, np.newaxis].astype(np.uint8)
 	
 	return state
@@ -55,7 +58,6 @@ class PreprocessingWrapper(gym.Wrapper):
 		obs = self.prepro(obs)
 
 		# import pdb;pdb.set_trace()
-		
 		return obs, reward, done, info
 
 

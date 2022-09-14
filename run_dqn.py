@@ -1,6 +1,7 @@
 import argparse
 import yaml
 import gym
+from utils.general import join
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", required=False, type=str)
