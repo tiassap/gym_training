@@ -14,10 +14,10 @@ output:
     log_path: !join [*output_path, "/log.txt"]
     plot_output: !join [*output_path, "/scores.png"]
     record_path: !join [*output_path, "/monitor/"]
+    tensorboard_output: !join [*output_path, "/tensorboard/"]
 
 model_training:
     # load_path: "pretrained_weights/model.weights"
-    load_path: "submission/model.weights"
     num_episodes_test: 50
     grad_clip: True
     clip_val: 10
@@ -28,7 +28,7 @@ model_training:
     soft_epsilon: 0.05
 
 hyper_params:
-    nsteps_train: 4000000
+    nsteps_train: 5000000
     batch_size: 32
     buffer_size: 1000000
     target_update_freq: 10000

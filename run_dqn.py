@@ -4,6 +4,9 @@ import gym
 from utils.general import join
 from utils.gym_wrapper import PreprocessingWrapper, preprocessing
 from src.DeepQN import DQN
+import warnings
+
+warnings.filterwarnings("ignore", module=r"gym")
 
 
 parser = argparse.ArgumentParser()
@@ -15,6 +18,7 @@ if __name__== "__main__":
 	args = parser.parse_args()
 
 	if args.config is not None:
+		yaml.add_constructor("!join", join)
 		config_file = open("config/{}.yml".format(args.config))
 		config = yaml.load(config_file, Loader=yaml.FullLoader)
 
@@ -31,32 +35,13 @@ if __name__== "__main__":
 
 		if args.train:
 			print("Training")
-			# if input("Use pre-trained model? (y/n): ") == "y":
-			# 	model.policy.load_state_dict(torch.load(
-			# 	config["output"]["model_output"],
-			# 	map_location="cpu"
-			# 	))
 			model.run_training()
 			print("Finished training")
 
 		elif args.record:
-			# model.policy.load_state_dict(torch.load(
-			# config["output"]["model_output"],
-			# map_location="cpu"
-			# ))
-			# Create video
-			# model.record()
 			pass
-			# print("Video created {}".format(config["output"]["model_output"]))
 
 		else:
-			# print("Running simulation")
-			# # load_state_dict
-			# model.policy.load_state_dict(torch.load(
-			# 	config["output"]["model_output"],
-			# 	map_location="cpu"
-			# ))
-			# model.run_simulation()
 			pass
 
 	else:
