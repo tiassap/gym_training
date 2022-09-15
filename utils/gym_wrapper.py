@@ -19,6 +19,7 @@ def preprocessing(state):
 	"""
 	# Preprocessing
 	state = cvtColor(state, COLOR_RGB2GRAY)
+	# state = cvtColor(state.astype(np.float32), COLOR_RGB2GRAY)
 	state = resize(state, (84, 110), interpolation=INTER_NEAREST)
 	state = state[18:102]
 
@@ -58,7 +59,7 @@ class PreprocessingWrapper(gym.Wrapper):
 		obs = self.prepro(obs)
 
 		# import pdb;pdb.set_trace()
-		return obs, reward, done, info
+		return obs, total_reward, done, info
 
 
 	def reset(self):
@@ -68,3 +69,12 @@ class PreprocessingWrapper(gym.Wrapper):
 
 		# import pdb;pdb.set_trace()
 		return self.obs
+
+
+if __name__ == "__main__":
+	import numpy as np
+
+	image = np.random.randint(0, 255, (210, 160, 3)).astype(np.uint8)
+	image = preprocessing(image)
+	print(image.shape)
+	print(image.dtype)

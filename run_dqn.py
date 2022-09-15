@@ -2,6 +2,9 @@ import argparse
 import yaml
 import gym
 from utils.general import join
+from utils.gym_wrapper import PreprocessingWrapper, preprocessing
+from src.DeepQN import DQN
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", required=False, type=str)
@@ -22,38 +25,39 @@ if __name__== "__main__":
 
 		mode = "human" if not (args.train or args.record) else None
 		env = gym.make(config["env"]["env_name"], render_mode = mode)
+		env = PreprocessingWrapper(env, preprocessing)
 
-		model = ###
+		model = DQN(env, config)
 
 		if args.train:
 			print("Training")
-			if input("Use pre-trained model? (y/n): ") == "y":
-				model.policy.load_state_dict(torch.load(
-				config["output"]["model_output"],
-				map_location="cpu"
-				))
-
+			# if input("Use pre-trained model? (y/n): ") == "y":
+			# 	model.policy.load_state_dict(torch.load(
+			# 	config["output"]["model_output"],
+			# 	map_location="cpu"
+			# 	))
 			model.run_training()
 			print("Finished training")
 
 		elif args.record:
-			model.policy.load_state_dict(torch.load(
-			config["output"]["model_output"],
-			map_location="cpu"
-		))
+			# model.policy.load_state_dict(torch.load(
+			# config["output"]["model_output"],
+			# map_location="cpu"
+			# ))
 			# Create video
-			model.record()
-			print("Video created {}".format(config["output"]["model_output"]))
+			# model.record()
+			pass
+			# print("Video created {}".format(config["output"]["model_output"]))
 
 		else:
-			print("Running simulation")
-			# load_state_dict
-			model.policy.load_state_dict(torch.load(
-				config["output"]["model_output"],
-				map_location="cpu"
-			))
-
-			model.run_simulation()
+			# print("Running simulation")
+			# # load_state_dict
+			# model.policy.load_state_dict(torch.load(
+			# 	config["output"]["model_output"],
+			# 	map_location="cpu"
+			# ))
+			# model.run_simulation()
+			pass
 
 	else:
 		# Show program documentation and usage

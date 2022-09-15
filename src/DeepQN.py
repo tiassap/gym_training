@@ -11,16 +11,17 @@ import numpy as np
 import gym
 from utils.replay_buffer import ReplayBuffer, sample_n_unique
 from utils.gym_wrapper import PreprocessingWrapper, preprocessing
+from torch.utils.tensorboard import SummaryWriter
 
 class NN_VFA(nn.Module):
-	def __init__(self, env, config) -> None:
+	def __init__(self, env, config):
 		super().__init__()
 		state_shape = list(env.observation_space.shape)
 		img_height, img_width, n_channels = state_shape
 		num_actions = env.action_space.n
 		history = config["hyper_params"]["state_history"]
 
-		self.q_network = nn.Sequential(
+		self.network = nn.Sequential(
 			nn.Conv2d(n_channels * history, 32, (8, 8), stride=4, padding=2),
 			nn.ReLU(),
 			nn.Conv2d(32, 64, (4, 4), stride=2, padding=0),
@@ -34,62 +35,111 @@ class NN_VFA(nn.Module):
 		)
 
 	def forward(self, x):
-		return self.q_network(x)
+		return self.network(x)
 
 class DQN(object):
 	def __init__(self, env, config) -> None:
 		# Initialize model Q and Q_target
 		self.Q = NN_VFA(env, config)
 		self.Q_target = copy.deepcopy(self.Q)
+		self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+		self.Q = self.Q.to(self.device)
+		self.Q_target = self.Q_target.to(self.device)
+		self.optimizer = torch.optim.Adam(self.Q.parameters())
+		self.lr = config["hyper_params"]["lr_begin"]
+		self.epsilon = config["hyper_params"]["eps_begin"]
 
 		self.env = env
 		self.config = config
 
-	def play(self, train=False):
+		# self.summary_writer = SummaryWriter(self.config["output"]["output_path"], max_queue=1e5)
+		# self.avg_scores = []
+		# self.std_scores = []
+		# self.t_eval = []
+
+	def normalization(self, state):
+		return (state / 255).float()
+
+	def play(self, train=False, eval=False, eval_episode=10):
 		buffer_size = self.config["hyper_params"]["buffer_size"]
 		history = self.config["hyper_params"]["state_history"]
 		n_step = self.config["hyper_params"]["nsteps_train"]
 		replay_buffer = ReplayBuffer(buffer_size, history)
 
 		t = 0
-		while True:
-			
-			t += 1
+		episode = 0
+		rewards = []
+
+		while t <= n_step:
 			state = self.env.reset()
-			idx =replay_buffer.store_frame(state)
+			episode_reward = 0
 
-			# Concatenate 4 frames of recent observation. Add padding 0 if necessary.
-			q_input = replay_buffer.encode_recent_observation()
+			print("New episode")
 
-			best_action, q_vals = self.get_best_action(q_input)
-			action = self.epsilon_greedy(best_action)
+			while True:
+				t += 1
+				
+				idx =replay_buffer.store_frame(state)
 
-			new_state, reward, done, info = self.env.step(action)
+				# Concatenate 4 frames of recent observation. Add padding 0 if necessary.
+				q_input = replay_buffer.encode_recent_observation()
 
-			replay_buffer.store_effect(idx, action, reward, done)
-			state = new_state
+				best_action, q_vals = self.get_best_action(q_input)
 
-			if train:
-				self.train_step()
+				if train:
+					# Use e-greedy exploration strategy
+					self.update_epsilon(t)
+					action = self.epsilon_greedy(best_action)
+				else:
+					action = best_action
+
+				# action = self.env.action_space.sample()
+
+				new_state, reward, done, info = self.env.step(action)
+
+				# print("time step: {}, state.shape: {}, state.dtype: {}, \tepisode reward: {}, \tcurrent reward: {}".format(t, state.shape, state.dtype, episode_reward, reward))
+
+				replay_buffer.store_effect(idx, action, reward, done)
+				state = new_state
+
+				episode_reward += reward
+
+				if (train and t > self.config["hyper_params"]["learning_start"]):
+					if t % self.config["hyper_params"]["learning_freq"] == 0:
+						self.train_step(replay_buffer, t)
+
+					if t % self.config["hyper_params"]["target_update_freq"] == 0:
+						# Update target parameter
+						self.Q_target.load_state_dict(self.Q.state_dict())
+
+					if t % self.config["model_training"]["eval_freq"] == 0:
+						scores = self.play(eval=True, eval_episode=30)
+						self.evaluate(scores, t)
+
+					if t % self.config["model_training"]["saving_freq"] == 0:
+						self.save_model(t)
+				
+				if done or t >= n_step:
+					episode += 1
+					rewards += [episode_reward]
+					break
 			
-			if done:
-				break
-
-			if t >= n_step:
-				break
-
+			# Return 'scores' for evaluation
+			if eval and (episode >= eval_episode or t>= n_step):
+				return rewards 
+		
 
 	# def epsilon_greedy(self, state):
 	def epsilon_greedy(self, action):
-		epsilon = self.config["model_training"]["soft_epsilon"]
-		if np.random.random() < epsilon:
+		# epsilon = self.config["model_training"]["soft_epsilon"]
+		
+		if np.random.random() < self.epsilon:
 			return self.env.action_space.sample()
-		# else:
-		# 	return self.get_best_action(state)[0]
 		else:
 			return  action
 
-	def get_best_action(self, state: torch.Tensor) -> Tuple[int, np.ndarray]:
+	def get_best_action(self, state: torch.Tensor):
 		"""
 		Return best action
 
@@ -101,26 +151,78 @@ class DQN(object):
 		"""
 		with torch.no_grad():
 			s = torch.tensor(state, dtype=torch.uint8, device=self.device).unsqueeze(0)
-			s = self.process_state(s)
+			s = self.normalization(s)
 			action_values = self.get_q_values(s, 'q_network').squeeze().to('cpu').tolist()
 		action = np.argmax(action_values)
 		return action, action_values
 
 	def get_q_values(self, state, network):
 		out = None
+
+		# Swap the order of image element to n, C, H, W
 		input = torch.permute(state, (0, 3, 1, 2))
+
 		if network == 'q_network':
-			out = self.q_network(input)
+			out = self.Q(input)
 		elif network == 'target_network':
-			out = self.target_network(input)
+			out = self.Q_target(input)
 
 		return out
 
-	def train_step(self):
-		pass
+	def train_step(self, replay_buffer, t):
+		states, actions, rewards, next_states, dones = replay_buffer.sample(batch_size = 32)
 
-	def save_model(self):
-		pass
+		states = torch.tensor(states, dtype=torch.uint8, device=self.device)
+		actions = torch.tensor(actions, dtype=torch.uint8, device=self.device)
+		rewards = torch.tensor(rewards, dtype=torch.float, device=self.device)
+		next_states = torch.tensor(next_states, dtype=torch.uint8, device=self.device)
+		dones = torch.tensor(dones, dtype=torch.bool, device=self.device)
+
+		self.optimizer.zero_grad()
+
+		q_values = self.get_q_values(self.normalization(states), 'q_network')
+
+		with torch.no_grad():
+			target_q_values = self.get_q_values(self.normalization(next_states), 'target_network')
+
+		loss = self.calc_loss(q_values, target_q_values, actions, rewards, dones)
+
+		loss.backward()
+
+		self.update_lr(t)
+		for group in self.optimizer.param_groups:
+			group['lr'] = self.lr
+		
+		self.optimizer.step()
+		
+	def update_lr(self, t):
+		lr_begin = self.config["hyper_params"]["lr_begin"]
+		lr_end = self.config["hyper_params"]["lr_end"]
+		n_steps = self.config["hyper_params"]["lr_nsteps"]
+
+		self.lr = self.linear_schedule(t, lr_begin, lr_end, n_steps)
+
+	def update_epsilon(self, t):
+		eps_begin = self.config["hyper_params"]["eps_begin"]
+		eps_end = self.config["hyper_params"]["eps_end"]
+		n_steps = self.config["hyper_params"]["eps_nsteps"]
+
+		self.epsilon = self.linear_schedule(t, eps_begin, eps_end, n_steps)
+
+	def linear_schedule(self, t, val_begin, val_end, n_steps):
+		if t <= n_steps:
+			return val_begin + (val_end - val_begin) / n_steps * t
+		else:
+			return val_end
+
+	def save_model(self, t):
+		from datetime import datetime
+		FORMAT = '%Y%m%d%H%M%S'
+		datenow = datetime.now().strftime(FORMAT)
+
+		# Pathname format: "output_path/model_timestep-{t}_{datetime}.weights"
+		PATH = self.config["output"]["model_output"].format(t, datenow)
+		torch.save(self.Q.state_dict(), PATH)
 
 	def calc_loss(self, q_values: torch.Tensor, target_q_values: torch.Tensor,
 					actions: torch.Tensor, rewards: torch.Tensor, done_mask: torch.Tensor):
@@ -133,14 +235,24 @@ class DQN(object):
 		
 		return loss
 
-	def evaluate(self):
+	def evaluate(self, scores, t):
+		avg_score = np.mean(scores)
+		std_score = np.std(scores)
+		total_step = self.config["hyper_params"]["nsteps_train"]
+		print("Training step {}/{} \t : Score {} +/-{}".format(t, total_step, avg_score, std_score))
+		# self.avg_scores.append(avg_score)
+		# self.std_scores.append(std_score)
+		# self.t_eval.append(t)
+
+	def add_summary(self):
 		pass
 
 	def run_training(self):
 		self.play(train=True)
 
 	def run_simulation(self):
-		pass
+		self.play(eval=True, eval_episode=20)
+
 
 if __name__ == "__main__":
 	# For debugging
@@ -152,11 +264,15 @@ if __name__ == "__main__":
 	warnings.filterwarnings("ignore", module=r"gym")
 	yaml.add_constructor("!join", join)
 
-	env = gym.make("Breakout-v4")
+	# env = gym.make("ALE/Breakout-v5", render_mode="human")
+	env = gym.make("ALE/Breakout-v5")
 	env = PreprocessingWrapper(env, preprocessing)
 
-	config_file = open("/home/tias/Data_science/1_project/gym_training/config/breakout.yml")
+	config_file = open("/home/tias/Data_science/1_project/gym_training/config/breakout_test.yml")
 	config = yaml.load(config_file, Loader=yaml.FullLoader)
 
 	model = DQN(env, config)
-	import pdb; pdb.set_trace()
+	# import pdb; pdb.set_trace()
+	model.run_training()
+	# model.run_simulation()
+	print("Finished")

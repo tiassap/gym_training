@@ -1,2 +1,3 @@
 .gitignore
-dummy.py
+dummy*
+events.out.*
