@@ -1,7 +1,3 @@
-if __name__ == "__main__":
-	import sys
-	sys.path.append('/home/tias/Data_science/1_project/gym_training')
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -329,27 +325,3 @@ class DQN(object):
 	def run_simulation(self):
 		scores = self.play(eval_episode=3)
 		print("Score: {}".format(scores[0]))
-
-	
-if __name__ == "__main__":
-	# For debugging
-	import warnings
-	import yaml
-	from utils.general import join
-
-	warnings.filterwarnings("ignore", module=r"gym")
-	yaml.add_constructor("!join", join)
-
-	env = gym.make("ALE/Breakout-v5", render_mode="human")
-	# env = gym.make("ALE/Breakout-v5")
-	env = PreprocessingWrapper(env, preprocessing)
-
-	config_file = open(
-		"/home/tias/Data_science/1_project/gym_training/config/dummy-breakout.yml")
-	config = yaml.load(config_file, Loader=yaml.FullLoader)
-
-	model = DQN(env, config)
-	path = "/home/tias/Data_science/1_project/gym_training/output/ALE/Breakout-v5/models/model_20220919054801_9750000.weights.pt"
-	model.Q.load_state_dict(torch.load(path, map_location="cpu"))
-
-	model.run_simulation()

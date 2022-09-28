@@ -34,7 +34,7 @@ if __name__ == "__main__":
 			os.makedirs(config["output"]["model_output"])
 		
 		if not os.path.exists(config["output"]["record_path"]):
-			os.makedirs(config["output"]["record_path"]+"450")
+			os.makedirs(config["output"]["record_path"])
 
 		if not os.path.exists(config["model_training"]["load_path"]):
 			os.makedirs(config["model_training"]["load_path"])
@@ -43,15 +43,14 @@ if __name__ == "__main__":
 		env = gym.make(config["env"]["env_name"], render_mode = mode)
 		if args.record:
 			env = gym.wrappers.RecordVideo(env, 
-			config["output"]["record_path"]+"450", 
+			config["output"]["record_path"], 
 			step_trigger=lambda x: x % 10 == 0,
 			name_prefix=config["env"]["env_name"])
 
 		model = PolicyGradient(env, config, seed=1)
 
 		if config["env"]["use_pretrained_weights"]:
-			# path = get_pretrained_model(config["model_training"]["load_path"])[0]
-			path = '/home/tias/Data_science/1_project/gym_training/output/HalfCheetah-v4/models/model_20220926115422_150.weights.pt'
+			path = get_pretrained_model(config["model_training"]["load_path"])[0]
 			model.policy.load_state_dict(torch.load(path, map_location="cpu"))
 			print("Pretrained weights loading successful from path: {}".format(path))
 
