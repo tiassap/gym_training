@@ -1,0 +1,33 @@
+method: "Policy Gradient"
+
+env:
+    env_name: &env_name "HalfCheetah-v4"
+    use_pretrained_weights: True
+    record: False
+    min_expected_reward: 2000
+
+model_training:
+    load_path: !join ["pretrained_weights/", *env_name]
+    num_episodes_eval: 5
+    record_freq: 5
+    saving_freq: 50
+    summary_freq: 1
+    use_baseline: &use_baseline True
+    normalize_advantage: True 
+
+hyper_params: 
+    max_ep_len: 1000 # maximum episode length (Note: this value must be strictly less than or equal to our batch size)
+    num_batches: 300 # number of batches trained on
+    batch_size: 50000 # number of steps used to compute each policy update
+    learning_rate: 0.03
+    gamma: 0.9 # the discount factor
+    n_layers: 2
+    layer_size: 64
+
+output:
+    output_path: &output_path !join ["output/", *env_name]
+    model_output: !join [*output_path, "/models"]
+    log_path: !join [*output_path, "/log.txt"]
+    scores_output: !join [*output_path, "/scores.npy"]
+    plot_output: !join [*output_path, "/scores.png"]
+    record_path: !join [*output_path, "/recording/"]

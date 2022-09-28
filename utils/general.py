@@ -9,6 +9,7 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import scipy.stats as stats
 import torch
+import os
 
 logging.getLogger('matplotlib.font_manager').disabled = True
 
@@ -178,3 +179,9 @@ def join(loader, node):
     seq = loader.construct_sequence(node)
     seq = [baseline_map[str(x)] if (str(x) in baseline_map.keys()) else x for x in seq]
     return ''.join([str(i) for i in seq])
+
+def get_pretrained_model(path):
+    model = list(sorted(os.listdir(path)))[-1]
+    path = path + "/" + model
+    pretrained_step = int(model.split("_")[-1].split(".", 1)[0])
+    return path, pretrained_step

@@ -2,7 +2,6 @@ if __name__ == "__main__":
 	import sys
 	sys.path.append('/home/tias/Data_science/1_project/gym_training')
 
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,6 +12,9 @@ import gym
 from utils.replay_buffer import ReplayBuffer, sample_n_unique
 from utils.gym_wrapper import PreprocessingWrapper, preprocessing
 from torch.utils.tensorboard import SummaryWriter
+from utils.general import get_pretrained_model
+from datetime import datetime
+from collections import deque
 
 
 class NN_VFA(nn.Module):
@@ -35,16 +37,28 @@ class NN_VFA(nn.Module):
 			nn.ReLU(),
 			nn.Linear(512, num_actions)
 		)
+		self.apply(self._init_weights)
 
 	def forward(self, x):
 		return self.network(x)
 
+	def _init_weights(self, module):
+		"""
+		Source: https://arxiv.org/pdf/1502.01852v1.pdf equation 10 for conv.
+		"""
+		if isinstance(module, nn.Conv2d):
+			_n = module.kernel_size[0]**2 * module.in_channels
+			module.weight.data.normal_(mean=0.0, std=(2 / _n)**0.5)
+			if module.bias is not None:
+				module.bias.data.zero_()
+		elif isinstance(module, nn.Linear):
+			module.weight.data.normal_(mean=0.0, std=0.15)
+			if module.bias is not None:
+				module.bias.data.zero_()
+
 
 class DQN(object):
 	def __init__(self, env, config) -> None:
-
-		if not os.path.exists(config["output"]["output_path"]):
-			os.makedirs(config["output"]["output_path"])
 
 		# Initialize model Q and Q_target
 		self.Q = NN_VFA(env, config)
@@ -56,15 +70,15 @@ class DQN(object):
 		self.optimizer = torch.optim.Adam(self.Q.parameters())
 		self.lr = config["hyper_params"]["lr_begin"]
 		self.epsilon = config["hyper_params"]["eps_begin"]
-
+		
 		self.env = env
 		self.config = config
 
 		self.summary_writer = SummaryWriter(
 			self.config["output"]["tensorboard_output"], max_queue=1e6)
-		# self.avg_scores = []
-		# self.std_scores = []
-		# self.t_eval = []
+
+		self.pretrained_t = get_pretrained_model(config["model_training"]["load_path"])[1] \
+			if config["env"]["use_pretrained_weights"] else 0
 
 
 	def normalization(self, state):
@@ -72,37 +86,38 @@ class DQN(object):
 
 
 	def play(self, train=False, eval_episode=30):
+		"""
+		Run game episodes. Used in training (train=True) and evaluation/simulation (train=False) 
+		"""
 		buffer_size = self.config["hyper_params"]["buffer_size"]
 		history = self.config["hyper_params"]["state_history"]
-		n_step = self.config["hyper_params"]["nsteps_train"]
+		n_step = self.config["hyper_params"]["nsteps_train"] + self.pretrained_t
 		replay_buffer = ReplayBuffer(buffer_size, history)
 
-		t = 0
+		t = 0 + self.pretrained_t
 		episode = 0
-		rewards = []
-		max_q_vals = []
+		rewards = deque(maxlen=1000)
+		max_q_vals = deque(maxlen=1000)
 
-
-		while t <= n_step:
+		while t < n_step:
 			state = self.env.reset()
 			episode_reward = 0
 			episode_q_vals = 0
 
 			while True:
 				t += 1
-
+				
 				idx = replay_buffer.store_frame(state)
-
 				# Concatenate 4 frames of recent observation. Add padding 0 if necessary.
 				q_input = replay_buffer.encode_recent_observation()
-
 				best_action, q_vals = self.get_best_action(q_input)
 
 				if train:
-					# Use e-greedy exploration strategy
+					# Use e-greedy exploration strategy on training
 					self.update_epsilon(t)
 					action = self.epsilon_greedy(best_action)
 				else:
+					# On simulation/evaluation use only best action
 					action = best_action
 
 				# action = self.env.action_space.sample()
@@ -115,7 +130,7 @@ class DQN(object):
 				episode_reward += reward
 				episode_q_vals += np.max(q_vals)  # Max Q over a
 
-				if (train and t > self.config["hyper_params"]["learning_start"]):
+				if (train and t > self.config["hyper_params"]["learning_start"] + self.pretrained_t):
 					if t % self.config["hyper_params"]["learning_freq"] == 0:
 						self.train_step(replay_buffer, t)
 
@@ -124,23 +139,26 @@ class DQN(object):
 						self.Q_target.load_state_dict(self.Q.state_dict())
 
 					if t % self.config["model_training"]["eval_freq"] == 0:
-						scores = self.play(train=False)
+						scores = self.play(train=False, eval_episode=self.config["model_training"]["num_episodes_test"])
 						# scores : (rewards, max_q_vals)
 						self.evaluate(scores, t)
 
 					if t % self.config["model_training"]["saving_freq"] == 0:
-						self.save_model(t)
+						self.save_model(self.config["output"]["model_output"], t)
 
 				if done or t >= n_step:
 					episode += 1
-					rewards += [episode_reward]
-					max_q_vals += [episode_q_vals]
+					rewards.append(episode_reward)
+					max_q_vals.append(episode_q_vals)
 					self.tf_add_summary(episode_reward, episode_q_vals, episode)
 					break
 
 			# Return 'scores' for evaluation
 			if not train and (episode >= eval_episode or t >= n_step):
+				del replay_buffer # Delete replay_buffer on evaluation to save memory.
 				return (rewards, max_q_vals)
+		
+		self.save_model(self.config["model_training"]["load_path"], t)
 
 
 	def epsilon_greedy(self, action):
@@ -209,8 +227,8 @@ class DQN(object):
 
 		loss.backward()
 
-		total_norm = torch.nn.utils.clip_grad_norm_(
-			self.Q.parameters(), self.config["model_training"]["clip_val"])
+		# total_norm = torch.nn.utils.clip_grad_norm_(
+		# 	self.Q.parameters(), self.config["model_training"]["clip_val"])
 
 		self.update_lr(t)
 		for group in self.optimizer.param_groups:
@@ -218,7 +236,7 @@ class DQN(object):
 
 		self.optimizer.step()
 
-		return loss.item(), total_norm.item()
+		# return loss.item(), total_norm.item()
 
 
 	def update_lr(self, t):
@@ -238,19 +256,21 @@ class DQN(object):
 
 
 	def linear_schedule(self, t, val_begin, val_end, n_steps):
-		if t <= n_steps:
-			return val_begin + (val_end - val_begin) / n_steps * t
+		if t <= self.config["hyper_params"]["learning_start"]:
+			return val_begin
+		elif t > self.config["hyper_params"]["learning_start"] and t <= n_steps + self.config["hyper_params"]["learning_start"]:
+			return val_begin + (val_end - val_begin) / n_steps * (t - self.config["hyper_params"]["learning_start"])
 		else:
 			return val_end
 
 
-	def save_model(self, t):
-		from datetime import datetime
+	def save_model(self, path, t):
 		FORMAT = '%Y%m%d%H%M%S'
 		datenow = datetime.now().strftime(FORMAT)
 
-		# Pathname format: "output_path/model_timestep-{t}_{datetime}.weights"
-		PATH = self.config["output"]["model_output"].format(t, datenow)
+		# Pathname format: "output_path/model_{datetime}_{t}.weights"
+		PATH = path + "/model_{}_{}.weights.pt".format(datenow, t)
+		print("		saving ", PATH)
 		torch.save(self.Q.state_dict(), PATH)
 
 
@@ -263,7 +283,8 @@ class DQN(object):
 			  * q_values).sum(dim=1)
 		q_target = torch.where(
 			done_mask, rewards, rewards + gamma * torch.max(target_q_values, axis=1)[0])
-		loss = F.mse_loss(q_, q_target, reduction='mean')
+		# loss = F.mse_loss(q_, q_target, reduction='mean')
+		loss = F.huber_loss(q_, q_target, reduction='mean', delta=1.0)
 
 		return loss
 
@@ -273,16 +294,16 @@ class DQN(object):
 		Evaluate best action result from trained network.
 		"""
 		avg_reward = np.mean(scores[0])
-		max_reward = np.max(scores[1])
+		max_reward = np.max(scores[0])
 		std_reward = np.std(scores[0])
 
 		avg_q = np.mean(scores[1])
 		max_q = np.max(scores[1])
 		std_q = np.std(scores[1])
 
-		total_step = self.config["hyper_params"]["nsteps_train"]
-		print("Training step {}/{} \t : Score {} +/-{}".format(t,
-			  total_step, avg_reward, std_reward))
+		total_step = self.config["hyper_params"]["nsteps_train"] + self.pretrained_t
+		print("Training step {}/{} \t : Score {:.2f} +/-{:.2f} \t date-time: {}".format(t,
+			  total_step, avg_reward, std_reward, datetime.now().strftime('%Y-%m-%d|%H:%M:%S')))
 		# self.avg_scores.append(avg_score)
 		# self.std_scores.append(std_score)
 		# self.t_eval.append(t)
@@ -297,8 +318,8 @@ class DQN(object):
 
 	def tf_add_summary(self, reward, Q_val, episode):
 		"""Reward and Q values during training"""
-		self.summary_writer.add_scalar('Reward @training', reward, episode)
-		self.summary_writer.add_scalar('Q values @training', Q_val, episode)
+		self.summary_writer.add_scalar('Reward per episode @training', reward, episode)
+		self.summary_writer.add_scalar('Q values per episode @training', Q_val, episode)
 
 
 	def run_training(self):
@@ -306,9 +327,10 @@ class DQN(object):
 
 
 	def run_simulation(self):
-		self.play(eval_episode=20)
+		scores = self.play(eval_episode=3)
+		print("Score: {}".format(scores[0]))
 
-
+	
 if __name__ == "__main__":
 	# For debugging
 	import warnings
@@ -319,10 +341,15 @@ if __name__ == "__main__":
 	yaml.add_constructor("!join", join)
 
 	env = gym.make("ALE/Breakout-v5", render_mode="human")
+	# env = gym.make("ALE/Breakout-v5")
 	env = PreprocessingWrapper(env, preprocessing)
 
 	config_file = open(
-		"/home/tias/Data_science/1_project/gym_training/config/dummy-breakout_test.yml")
+		"/home/tias/Data_science/1_project/gym_training/config/dummy-breakout.yml")
 	config = yaml.load(config_file, Loader=yaml.FullLoader)
+
 	model = DQN(env, config)
+	path = "/home/tias/Data_science/1_project/gym_training/output/ALE/Breakout-v5/models/model_20220919054801_9750000.weights.pt"
+	model.Q.load_state_dict(torch.load(path, map_location="cpu"))
+
 	model.run_simulation()

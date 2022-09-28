@@ -1,3 +1,4 @@
 .gitignore
 dummy*
 events.out.*
+output/
