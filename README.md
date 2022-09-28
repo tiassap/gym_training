@@ -7,13 +7,14 @@ Watch the video on YouTube:\
 _Training done on 3 environments: Cartpole-v1 (trained with Policy Gradient), Pong-v4 (DQN), and Half-Cheetah-v4 (Policy Gradient)_
 
 Run this command line for simulation using pretrained weights. \
+\
 **Policy Gradient**
 ```
-python run_pg --config=<config_filename>
+python run_pg.py --config=<config_filename>
 ```
 **DQN**
 ```
-python run_dqn --config=<config_filename>
+python run_dqn.py --config=<config_filename>
 ```
 
 Use argument `--train` to train or `--record` to record video output.
