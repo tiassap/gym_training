@@ -52,6 +52,7 @@ if __name__== "__main__":
 
 		if config["env"]["use_pretrained_weights"]:
 			path = get_pretrained_model(config["model_training"]["load_path"])[0]
+			# path = "/home/tias/Data_science/1_project/gym_training/output/Breakout-v4/model_202204120221_250000.weights.pt"
 			model.Q.load_state_dict(torch.load(path, map_location="cpu"))
 			print("Pretrained weights loading successful from path: {}".format(path))
 
